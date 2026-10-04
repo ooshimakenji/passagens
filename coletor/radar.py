@@ -314,20 +314,24 @@ def cotar_stopover(origem, hub, destino, ida, volta, dias, max_paradas, cache, p
     O bilhete 1 não depende de `dias`, então entra em `cache` e é cotado uma vez por
     (hub, par de datas), não uma vez por combinação.
     """
+    # A parada encurta a perna seguinte nas duas pontas, então precisa caber na viagem:
+    # 7 dias de parada não entram numa viagem de 10. Checado ANTES de gastar busca.
+    ida2 = (date.fromisoformat(ida) + timedelta(days=dias)).isoformat()
+    volta2 = (date.fromisoformat(volta) - timedelta(days=dias)).isoformat()
+    if ida2 >= volta2:
+        return None
+
     chave = (origem, hub, ida, volta)
     if chave not in cache:
-        cache[chave] = consultar(origem, hub, ida, volta, max_paradas, pausa=pausa)
+        cache[chave] = consultar(origem, hub, ida, volta, max_paradas, 3, pausa)
         time.sleep(pausa)
     perna1 = cache[chave]
     if perna1 is None:
         return None
 
-    ida2 = (date.fromisoformat(ida) + timedelta(days=dias)).isoformat()
-    volta2 = (date.fromisoformat(volta) - timedelta(days=dias)).isoformat()
-    if ida2 >= volta2:  # a parada comeu a viagem inteira
-        return None
-
-    perna2 = consultar(hub, destino, ida2, volta2, max_paradas, pausa=pausa)
+    # Três tentativas, como na sonda: um vazio aqui não descarta uma data, descarta o
+    # roteiro inteiro. TYO-ICN voltou vazio com 2 tentativas e deu R$ 1.245 com 5.
+    perna2 = consultar(hub, destino, ida2, volta2, max_paradas, 3, pausa)
     time.sleep(pausa)
     if perna2 is None:
         return None
