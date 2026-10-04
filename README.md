@@ -169,9 +169,15 @@ O parâmetro foi perdido no rewrite 3.0 do `fast-flights` e restaurado no
 sem ele — por isso `radar.py` monta a requisição com o `primp` (que já vem com a lib) em
 vez de usar o `fetch_flights_html`.
 
-**O que nem o `tfu` resolve:** companhias **chinesas**. Em SAO→PVG, 48 itinerários e
-nenhum da China Eastern, Air China ou China Southern. Não é truncamento, é ausência — para
-tarifa chinesa seria preciso outra fonte (Trip.com), ainda não avaliada.
+**Companhias chinesas** aparecem pouco saindo do Brasil, mas aparecem: numa busca de 50
+itinerários para Xangai, Air China surge em codeshare (1 de 21 companhias); em outra, de 48,
+nenhuma. Se a tarifa publicada na China é melhor, só outra fonte (Trip.com) diria — não
+avaliado.
+
+**Moeda não é alavanca:** `curr=CNY&gl=CN` devolveu os mesmos 50 itinerários e as mesmas 21
+companhias que `curr=BRL`. Já o **idioma é armadilha** — com `hl=pt-BR` os rótulos vêm
+traduzidos e a extração devolve zero, indistinguível de "rota sem cotação". O coletor manda
+`hl=''` sempre.
 
 **O parser do `fast-flights` não é usado.** Ele ancora em classe CSS (`kw4HXCc5QE=`), que o
 Google reescreve a cada deploy: em 2026-10-04 a versão 3.1.0 devolveu **0 voos** para

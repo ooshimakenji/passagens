@@ -1,15 +1,16 @@
 {
   "setups": [
     {
-      "nome": "Ásia — Japão, Coreia ou Taiwan",
+      "_comentario": "Japão é obrigatório (é o destino). China e Coreia entram como parada de dias, nas duas direções: ir pela China e depois o Japão, ou ir ao Japão e passar dias na Coreia/China.",
+      "nome": "Japão, com parada na China ou Coreia",
       "origem": "SAO",
-      "destino": ["JP", "KR", "TW"],
+      "destino": "JP",
       "meses": ["2027-01"],
       "estadia_dias": [10, 20],
       "max_paradas": 2,
       "top_destinos": 5,
       "gatilho": { "teto_brl": 7500, "pct_abaixo_mediana": 15 },
-      "stopover": { "em": ["ICN", "PEK", "DOH"], "dias": [2, 5], "datas": 2 }
+      "stopover": { "em": ["PVG", "PEK", "HKG", "ICN"], "dias": [3, 7], "datas": 2 }
     }
   ],
   "saida_dir": "web/public/data",

@@ -190,6 +190,16 @@ def test_stopover():
         assert r["pernas"][1]["volta"] == "2027-01-21", r["pernas"][1]
         assert r["pernas"][0]["trecho"] == "SAO-ICN"
         assert r["pernas"][1]["trecho"] == "ICN-TYO"
+        assert r["roteiro"] == "SAO → ICN (4d) → TYO → ICN → SAO", r["roteiro"]
+
+        # A ordem inversa é uma viagem diferente: "Brasil → Japão, uns dias na Coreia".
+        # Mesma função, papéis trocados — é o que cobre os três roteiros pedidos.
+        inv = cotar_stopover("SAO", "TYO", "ICN", "2027-01-05", "2027-01-25", 4,
+                             None, {}, pausa=0)
+        assert inv["roteiro"] == "SAO → TYO (4d) → ICN → TYO → SAO", inv["roteiro"]
+        assert inv["pernas"][0]["trecho"] == "SAO-TYO"
+        # Nos dois sentidos o Japão aparece — é o destino obrigatório do dono.
+        assert "TYO" in r["roteiro"] and "TYO" in inv["roteiro"]
 
         # Segunda consulta com outro nº de dias reusa o bilhete SAO-ICN do cache.
         antes = len(chamadas)

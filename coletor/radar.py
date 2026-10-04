@@ -338,6 +338,9 @@ def cotar_stopover(origem, hub, destino, ida, volta, dias, max_paradas, cache, p
         "preco": voo1.preco + voo2.preco,
         "hub": hub,
         "dias_no_hub": dias,
+        # Lido na tela. `hub` é só a primeira parada: quem decide o sentido da viagem é
+        # quem chama, trocando os papéis (ver `ORDENS` no main).
+        "roteiro": f"{origem} → {hub} ({dias}d) → {destino} → {hub} → {origem}",
         "pernas": [
             {"trecho": f"{origem}-{hub}", "ida": ida, "volta": volta,
              "preco": voo1.preco, "cia": voo1.cia, "url": url1},
@@ -430,15 +433,23 @@ def avisar(disparos: list[dict]) -> None:
     """Abre uma issue no próprio repo. O GitHub já notifica por e-mail e no app do
     celular — sem bot de Telegram, sem SMTP, sem secret novo. Fora do Actions (ou sem o
     `gh`), só imprime: rodar local não deve criar issue sem querer."""
+    def trajeto(d: dict) -> str:
+        """Um roteiro com parada de dias não é "SAO→TYO": dizer isso no alerta esconde
+        que são dois bilhetes e que a viagem passa por outro país."""
+        sv = d.get("stopover")
+        if sv:
+            return f"{sv['roteiro']} (2 bilhetes)"
+        return f"{d['origem']}→{d['destino']}"
+
     if not disparos or not os.environ.get("GITHUB_ACTIONS"):
         for d in disparos:
-            print(f"  ALERTA {d['setup']}: R$ {d['preco']} {d['origem']}->{d['destino']} "
+            print(f"  ALERTA {d['setup']}: R$ {d['preco']} {trajeto(d)} "
                   f"{d['ida']} a {d['volta']} ({d['motivo']})")
         return
 
     titulo = f"Promo: {len(disparos)} oferta(s) abaixo do gatilho — {date.today().isoformat()}"
     corpo = "\n".join(
-        f"- **R$ {d['preco']}** · {d['setup']} · {d['origem']}→{d['destino']} · "
+        f"- **R$ {d['preco']}** · {d['setup']} · {trajeto(d)} · "
         f"{d['ida']} a {d['volta']} · {d['cia'] or '?'} · {d['motivo']}\n  {d['url']}"
         for d in disparos
     )
@@ -570,40 +581,46 @@ def main() -> int:
                 for hub in hubs:
                     if hub in (base["origem"], base["destino"]):
                         continue
-                    for n in amostrar(sv["dias"]):
-                        if restantes <= 1:
-                            break
-                        restantes -= 2  # as duas pernas
-                        try:
-                            rota = cotar_stopover(
-                                base["origem"], hub, base["destino"], base["ida"],
-                                base["volta"], n, setup.get("max_paradas"),
-                                cache_perna1, pausa,
+                    # As duas ordens possíveis, porque mudam a viagem e o preço:
+                    #   (hub, destino) -> "Brasil → China, uns dias, depois o Japão"
+                    #   (destino, hub) -> "Brasil → Japão, uns dias na Coreia, volta"
+                    # O destino do setup aparece nas duas, então ele é sempre visitado.
+                    ordens = [(hub, base["destino"]), (base["destino"], hub)]
+                    for primeira, segunda in ordens:
+                        for n in amostrar(sv["dias"]):
+                            if restantes <= 1:
+                                break
+                            restantes -= 2  # as duas pernas
+                            try:
+                                rota = cotar_stopover(
+                                    base["origem"], primeira, segunda, base["ida"],
+                                    base["volta"], n, setup.get("max_paradas"),
+                                    cache_perna1, pausa,
+                                )
+                            except Exception as e:
+                                print(f"  stopover {primeira}-{segunda} {n}d: falhou "
+                                      f"({type(e).__name__})", file=sys.stderr)
+                                continue
+                            if rota is None:
+                                continue
+                            bateu, motivo = disparou(
+                                rota["preco"], base.get("mediana"), setup.get("gatilho", {})
                             )
-                        except Exception as e:
-                            print(f"  stopover {hub} {n}d: falhou ({type(e).__name__})",
-                                  file=sys.stderr)
-                            continue
-                        if rota is None:
-                            continue
-                        bateu, motivo = disparou(
-                            rota["preco"], base.get("mediana"), setup.get("gatilho", {})
-                        )
-                        ofertas.append({
-                            "origem": base["origem"], "destino": base["destino"],
-                            "ida": base["ida"], "volta": base["volta"],
-                            "preco": rota["preco"], "cia": None,
-                            "paradas": None, "duracao_min": None,
-                            "url": rota["pernas"][0]["url"],
-                            "promo": bateu, "motivo": motivo,
-                            "mediana": base.get("mediana"), "sonda": False,
-                            # Comparar com o voo que serviu de base é o que dá sentido ao
-                            # número: "R$ 400 mais caro, e você ganha 4 dias em Seul".
-                            "stopover": {**rota, "base_preco": base["preco"],
-                                         "dois_bilhetes": True},
-                        })
-                        if bateu:
-                            disparos.append({**ofertas[-1], "setup": setup["nome"]})
+                            ofertas.append({
+                                "origem": base["origem"], "destino": segunda,
+                                "ida": base["ida"], "volta": base["volta"],
+                                "preco": rota["preco"], "cia": None,
+                                "paradas": None, "duracao_min": None,
+                                "url": rota["pernas"][0]["url"],
+                                "promo": bateu, "motivo": motivo,
+                                "mediana": base.get("mediana"), "sonda": False,
+                                # Comparar com o voo que serviu de base é o que dá sentido
+                                # ao número: "R$ 400 a mais, e você ganha 4 dias em Seul".
+                                "stopover": {**rota, "base_preco": base["preco"],
+                                             "dois_bilhetes": True},
+                            })
+                            if bateu:
+                                disparos.append({**ofertas[-1], "setup": setup["nome"]})
 
         # Uma observação por rota por dia: a mais barata vista hoje.
         for chave, preco in minimo_por_rota(achados).items():
