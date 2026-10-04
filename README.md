@@ -141,6 +141,22 @@ terminal.
 | [Travelpayouts](https://api.travelpayouts.com/data/en/airports.json) | código de **cidade** IATA | grátis, sem token |
 | [OurAirports](https://davidmegginson.github.io/ourairports-data/) (CC0) | porte do aeroporto e se tem voo regular | grátis |
 
+### A lista completa (`tfu`)
+
+Sem o parâmetro `tfu=EgQIABABIgA` o Google devolve **só o topo** da lista. Medido em
+2026-10-04, mesma busca: SAO→TYO foi de **11 para 96** itinerários, SAO→PVG de **13 para
+48**. O mais barato não mudou nessas rotas, mas as opções com escala ≥8h foram de 0 para
+23 — é a diferença entre "existe uma passada por Paris de 14h" e não saber disso.
+
+O parâmetro foi perdido no rewrite 3.0 do `fast-flights` e restaurado no
+[PR #115](https://github.com/AWeirdDev/flights/pull/115), mas o PyPI ainda publica a 3.1.0
+sem ele — por isso `radar.py` monta a requisição com o `primp` (que já vem com a lib) em
+vez de usar o `fetch_flights_html`.
+
+**O que nem o `tfu` resolve:** companhias **chinesas**. Em SAO→PVG, 48 itinerários e
+nenhum da China Eastern, Air China ou China Southern. Não é truncamento, é ausência — para
+tarifa chinesa seria preciso outra fonte (Trip.com), ainda não avaliada.
+
 **O parser do `fast-flights` não é usado.** Ele ancora em classe CSS (`kw4HXCc5QE=`), que o
 Google reescreve a cada deploy: em 2026-10-04 a versão 3.1.0 devolveu **0 voos** para
 JFK→LAX com o HTML chegando intacto. `coletor/extrator.py` lê o `aria-label`, que é

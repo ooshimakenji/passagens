@@ -208,6 +208,14 @@ def test_rotas_mortas():
     depois = (date.today() + timedelta(days=31)).isoformat()
     assert esta_morta(mortas, "SAO-AKJ", depois) is False, "o descanso tem que expirar"
 
+    # Rota que já deu preço algum dia não dorme nunca: foi o que tirou Tóquio da coleta
+    # de 2026-10-04 (vazia na varredura, R$ 7.690 medida isolada).
+    viva = {}
+    for _ in range(5):
+        marcar(viva, "SAO-TYO", False, hoje, tem_historico=True)
+    assert viva["SAO-TYO"]["vazios"] == 5, "conta os vazios"
+    assert esta_morta(viva, "SAO-TYO", hoje) is False, "mas nunca é posta para dormir"
+
     # Achar preço ressuscita na hora, sem esperar o prazo.
     marcar(mortas, "SAO-AKJ", True, hoje)
     assert "SAO-AKJ" not in mortas

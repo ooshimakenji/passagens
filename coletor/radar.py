@@ -22,9 +22,9 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from extrator import mais_barato
-from extrator import extrair_voos
-from fast_flights import FlightQuery, Passengers, create_query, fetch_flights_html
+from extrator import extrair_voos, mais_barato
+from fast_flights import FlightQuery, Passengers, create_query
+from primp import Client  # já vem com o fast-flights; é o cliente que ele usa internamente
 
 RAIZ = Path(__file__).resolve().parent.parent
 CACHE = Path(__file__).resolve().parent / "cache"
@@ -37,6 +37,23 @@ AEROPORTOS_URL = "https://api.travelpayouts.com/data/en/airports.json"
 PORTE_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv"
 
 _PORTE = {"large_airport": 2, "medium_airport": 1}
+
+BUSCA_URL = "https://www.google.com/travel/flights/search"
+# "show all flights and prices condition". Sem ele o Google devolve a lista TRUNCADA:
+# medido em 2026-10-04, SAO->TYO passou de 11 para 96 itinerários e SAO->PVG de 13 para 48,
+# pela mesma busca. Foi perdido no rewrite 3.0 do fast-flights e restaurado no PR #115
+# (mergeado 2026-09-21), mas o PyPI ainda publica a 3.1.0 sem ele — por isso montamos a
+# requisição aqui em vez de usar o `fetch_flights_html` da lib.
+TFU = "EgQIABABIgA"
+
+# O mesmo disfarce que o fast-flights usa internamente.
+_cliente = Client(impersonate="chrome_145", impersonate_os="macos")
+
+
+def buscar_html(q) -> str:
+    return _cliente.get(
+        BUSCA_URL, params={"tfs": q.to_str(), "curr": "BRL", "hl": "", "tfu": TFU}
+    ).text
 
 
 # --------------------------------------------------------------------------- guarda-chuva
@@ -156,9 +173,11 @@ def consultar(origem, destino, ida, volta, max_paradas, tentativas=2, pausa=2):
         max_stops=max_paradas,
     )
     for tentativa in range(tentativas):
-        voo = mais_barato(extrair_voos(fetch_flights_html(q)))
+        voo = mais_barato(extrair_voos(buscar_html(q)))
         if voo is not None:
-            return voo, q.url()
+            # O link também leva o tfu: clicar e ver a lista truncada seria pior que
+            # inútil — o preço da tela poderia não estar lá.
+            return voo, f"{q.url()}&tfu={TFU}"
         if tentativa + 1 < tentativas:
             time.sleep(pausa * (tentativa + 2))  # a segunda espera é maior que a primeira
     return None
@@ -167,7 +186,8 @@ def consultar(origem, destino, ida, volta, max_paradas, tentativas=2, pausa=2):
 # --------------------------------------------------------------------------- gatilho
 
 
-def sondar(origens, destinos, par, max_paradas, top, orcamento, pausa, mortas, hoje):
+def sondar(origens, destinos, par, max_paradas, top, orcamento, pausa, mortas, hoje,
+           historico=None, tentativas=3):
     """Fase 1 de "qualquer lugar do país": uma busca por destino, numa data representativa,
     só para ranquear as cidades pelo preço REAL e aprofundar nas mais baratas.
 
@@ -188,13 +208,16 @@ def sondar(origens, destinos, par, max_paradas, top, orcamento, pausa, mortas, h
                 continue
             gastas += 1
             try:
-                achado = consultar(o, d, ida, volta, max_paradas)
+                # Mais tentativas aqui que na varredura: um vazio na sonda não custa uma
+                # data, custa a cidade inteira — foi assim que Tóquio ficou de fora.
+                achado = consultar(o, d, ida, volta, max_paradas, tentativas, pausa)
             except Exception as e:
                 print(f"  sonda {o}-{d}: falhou ({type(e).__name__})", file=sys.stderr)
                 continue
             finally:
                 time.sleep(pausa)
-            marcar(mortas, f"{o}-{d}", achado is not None, hoje)
+            chave = f"{o}-{d}"
+            marcar(mortas, chave, achado is not None, hoje, bool((historico or {}).get(chave)))
             if achado is None:
                 continue  # Google não cota essa cidade a partir daqui: fora do radar
             voo, url = achado
@@ -300,14 +323,21 @@ def esta_morta(mortas: dict, chave: str, hoje: str) -> bool:
     return bool(prazo and hoje < prazo)
 
 
-def marcar(mortas: dict, chave: str, achou: bool, hoje: str) -> dict:
-    """Conta vazios consecutivos; achar preço ressuscita a rota na hora."""
+def marcar(mortas: dict, chave: str, achou: bool, hoje: str, tem_historico=False) -> dict:
+    """Conta vazios consecutivos; achar preço ressuscita a rota na hora.
+
+    `tem_historico` protege o caso que já aconteceu de verdade: na coleta de 2026-10-04 no
+    Actions, `SAO-TYO` voltou vazia na varredura das 72 cidades e o radar publicou Osaka a
+    R$ 8.919 enquanto Tóquio, medida isolada, estava a R$ 7.690. Rota que **já deu preço
+    algum dia** não é rota inexistente — então ela nunca é posta para dormir, só conta os
+    vazios. Quem dorme é a cidade que nunca cotou nada.
+    """
     if achou:
         mortas.pop(chave, None)
         return mortas
     reg = mortas.setdefault(chave, {"vazios": 0})
     reg["vazios"] += 1
-    if reg["vazios"] >= VAZIOS_PARA_MORRER:
+    if reg["vazios"] >= VAZIOS_PARA_MORRER and not tem_historico:
         reg["pular_ate"] = (
             date.fromisoformat(hoje) + timedelta(days=DIAS_DE_DESCANSO)
         ).isoformat()
@@ -398,7 +428,7 @@ def main() -> int:
             par_sonda = pares[len(pares) // 2]
             destinos, sondadas, gastas = sondar(
                 origens, destinos, par_sonda, setup.get("max_paradas"), top,
-                restantes, pausa, mortas, hoje,
+                restantes, pausa, mortas, hoje, historico,
             )
             restantes -= gastas
             for o, d, ida, volta, voo, url in sondadas:
