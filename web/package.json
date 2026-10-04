@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "vite build --ssr smoke.jsx --outDir dist-smoke --logLevel error && node dist-smoke/smoke.js"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",

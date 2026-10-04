@@ -34,7 +34,23 @@ cd coletor && python test_radar.py   # verificação, sem rede
 python radar.py                      # coleta (MAX_BUSCAS=5 para testar rápido)
 
 cd ../web && npm install && npm run dev
+npm run smoke                        # renderiza a tela no Node e confere o gatilho
 ```
+
+`npm run build` compila mesmo com um import faltando — erro assim só aparece quando o
+componente roda. O `smoke` renderiza a árvore inteira fora do navegador e falha nesse caso.
+
+## Dois gatilhos, de propósito
+
+| onde | para quê |
+|---|---|
+| **na tela** (`Meu gatilho`) | recalcula o destaque **na hora**, sobre os dados já coletados. Fica no `localStorage` |
+| **no `config.json`** | é o que **avisa quando ninguém está olhando** — abre a issue de madrugada |
+
+A página é estática: ela não roda sozinha nem escreve no repositório. Por isso, quando o
+gatilho da tela difere do que está valendo, aparece um aviso com a linha pronta e um link
+para editar o `config.json` direto no GitHub. As duas regras são a mesma conta (`avaliar`
+no front, `disparou` no coletor) e o smoke test trava se divergirem.
 
 ## Os setups (`config.json`)
 

@@ -8,7 +8,7 @@
       "estadia_dias": [10, 20],
       "max_paradas": 2,
       "top_destinos": 5,
-      "gatilho": { "teto_brl": 6000, "pct_abaixo_mediana": 25 },
+      "gatilho": { "teto_brl": 7500, "pct_abaixo_mediana": 15 },
       "stopover": { "em": ["ICN", "PEK", "DOH"], "dias": [2, 5], "datas": 2 }
     }
   ],

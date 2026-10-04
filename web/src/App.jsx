@@ -1,11 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Container, Typography, CircularProgress, Alert, Box, Stack } from '@mui/material';
 import Filtros from './Filtros.jsx';
+import Gatilho from './Gatilho.jsx';
 import Oferta from './Oferta.jsx';
 import { carregarPrecos, carregarHistorico } from './dados.js';
-import { atualizadoHa } from './format.js';
+import { atualizadoHa, moeda } from './format.js';
 
 const FILTROS_KEY = 'passagens:filtros';
+const GATILHO_KEY = 'passagens:gatilho';
+
+/// Vazio = "usa o que o coletor decidiu". Só assume o controle quando preenchido.
+const GATILHO_PADRAO = { teto: '', pct: '' };
+
+/// A mesma regra do coletor (`disparou`, em radar.py): qualquer um dos dois critérios
+/// basta, e sem mediana o critério de percentual não existe. Precisa bater com o de lá,
+/// senão a tela diz uma coisa e a notificação diz outra.
+export function avaliar(oferta, gatilho) {
+  if (gatilho.teto !== '' && oferta.preco <= gatilho.teto) {
+    return { promo: true, motivo: `abaixo do seu teto de ${moeda.format(gatilho.teto)}` };
+  }
+  if (gatilho.pct !== '' && oferta.mediana != null) {
+    if (oferta.preco <= oferta.mediana * (1 - gatilho.pct / 100)) {
+      return {
+        promo: true,
+        motivo: `${gatilho.pct}% abaixo da mediana da rota (${moeda.format(oferta.mediana)})`,
+      };
+    }
+  }
+  return { promo: false, motivo: null };
+}
 
 const FILTROS_PADRAO = {
   precoMax: '',
@@ -39,6 +62,7 @@ export default function App() {
   const [dados, setDados] = useState(null);
   const [historico, setHistorico] = useState({});
   const [filtros, setFiltros] = useState(() => lerLocalStorage(FILTROS_KEY, FILTROS_PADRAO));
+  const [gatilho, setGatilho] = useState(() => lerLocalStorage(GATILHO_KEY, GATILHO_PADRAO));
 
   useEffect(() => {
     carregarPrecos()
@@ -51,8 +75,20 @@ export default function App() {
   }, []);
 
   useEffect(() => gravarLocalStorage(FILTROS_KEY, filtros), [filtros]);
+  useEffect(() => gravarLocalStorage(GATILHO_KEY, gatilho), [gatilho]);
 
-  const setups = dados?.setups || [];
+  const usandoGatilhoProprio = gatilho.teto !== '' || gatilho.pct !== '';
+
+  // O `promo` que veio do coletor é a verdade do alerta; o gatilho daqui reavalia a mesma
+  // oferta na hora, sem esperar a próxima coleta.
+  const setups = useMemo(
+    () =>
+      (dados?.setups || []).map((s) => ({
+        ...s,
+        ofertas: s.ofertas.map((o) => (usandoGatilhoProprio ? { ...o, ...avaliar(o, gatilho) } : o)),
+      })),
+    [dados, gatilho, usandoGatilhoProprio],
+  );
 
   const destinosDisponiveis = useMemo(
     () => [...new Set(setups.flatMap((s) => s.ofertas.map((o) => o.destino)))].sort(),
@@ -120,6 +156,16 @@ export default function App() {
 
       {status === 'ok' && !semSetups && (
         <>
+          <Gatilho
+            gatilho={gatilho}
+            setGatilho={setGatilho}
+            doColetor={setups[0]?.gatilho}
+            quantosBatem={setups.reduce(
+              (n, s) => n + s.ofertas.filter((o) => o.promo).length,
+              0,
+            )}
+          />
+
           <Filtros
             destinosDisponiveis={destinosDisponiveis}
             filtros={filtros}
