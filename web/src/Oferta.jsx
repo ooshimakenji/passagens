@@ -59,6 +59,20 @@ export default function Oferta({ oferta, destaque = false, historico }) {
               .join(' · ') || 'detalhes do voo não informados'}
           </Typography>
 
+          {oferta.exige_visto?.length > 0 && (
+            <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 500, mt: 0.5 }}>
+              Passa por {oferta.exige_visto.join(', ')} — conexão lá exige visto, mesmo sem
+              sair do aeroporto
+            </Typography>
+          )}
+          {/* Nome de aeroporto que nenhuma tabela reconheceu. Dizer "não sei" é melhor
+              que deixar passar como se estivesse liberado. */}
+          {oferta.escalas_sem_pais?.length > 0 && (
+            <Typography variant="caption" color="text.secondary" component="div">
+              escala em {oferta.escalas_sem_pais.join(', ')}: país não confirmado
+            </Typography>
+          )}
+
           {oferta.escala_longa && (
             <Typography variant="body2" sx={{ color: 'info.main', fontWeight: 500, mt: 0.5 }}>
               {duracaoTexto(oferta.escala_longa.duracao_min)} de escala em{' '}

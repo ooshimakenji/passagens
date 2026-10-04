@@ -20,6 +20,7 @@ import sys
 import time
 import urllib.request
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 from extrator import extrair_voos, mais_barato
@@ -78,6 +79,71 @@ def _portes() -> dict[str, int]:
             if a["scheduled_service"] == "yes" and a["iata_code"]:
                 pesos[a["iata_code"]] = _PORTE.get(a["type"], 0)
     return pesos
+
+
+@lru_cache(maxsize=1)
+def _mapa_paises() -> tuple[dict[str, str], dict[str, str]]:
+    """(nome do aeroporto -> país, cidade -> país), das duas tabelas juntas.
+
+    O rótulo do Google dá a escala por extenso ("John F. Kennedy International Airport in
+    New York"), nunca por código. Para saber se uma conexão exige visto é preciso voltar
+    desse texto para o país, e nenhuma tabela sozinha cobre: a Travelpayouts grafa nomes
+    que a OurAirports escreve diferente e vice-versa.
+    """
+    por_nome: dict[str, str] = {}
+    por_cidade: dict[str, str] = {}
+
+    for a in json.loads(_baixar(AEROPORTOS_URL, "airports.json").read_text(encoding="utf-8")):
+        pais = a.get("country_code")
+        if not pais:
+            continue
+        for nome in {a.get("name"), (a.get("name_translations") or {}).get("en")}:
+            if nome:
+                por_nome.setdefault(nome.strip(), pais)
+
+    # Cidade homônima é uma armadilha séria aqui: "Paris" aparece 36 vezes nos Estados
+    # Unidos (Texas, Tennessee) e Charles de Gaulle sequer está registrado sob o município
+    # "Paris". Mapear cidade pelo primeiro que aparece diria que um voo via Paris exige
+    # visto americano. Por isso a cidade só resolve o país quando TODOS os aeroportos com
+    # voo regular que levam aquele nome estão no mesmo país; havendo dúvida, fica sem país.
+    candidatos: dict[str, set[str]] = {}
+    with _baixar(PORTE_URL, "ourairports.csv").open(encoding="utf-8", newline="") as f:
+        for a in csv.DictReader(f):
+            pais = a["iso_country"]
+            if a["name"]:
+                por_nome.setdefault(a["name"].strip(), pais)
+            if a["municipality"] and a["scheduled_service"] == "yes":
+                candidatos.setdefault(a["municipality"].strip(), set()).add(pais)
+
+    por_cidade = {c: next(iter(p)) for c, p in candidatos.items() if len(p) == 1}
+    return por_nome, por_cidade
+
+
+def pais_da_escala(aeroporto: str | None, cidade: str | None) -> str | None:
+    """País de uma escala, ou None quando nenhuma tabela reconhece o nome.
+
+    None é tratado como desconhecido, nunca como "não é país nenhum": dizer que um voo
+    não passa pelos EUA quando na verdade não se sabe seria o erro caro aqui.
+    """
+    por_nome, por_cidade = _mapa_paises()
+    if aeroporto and aeroporto.strip() in por_nome:
+        return por_nome[aeroporto.strip()]
+    if cidade and cidade.strip() in por_cidade:
+        return por_cidade[cidade.strip()]
+    return None
+
+
+def paises_de_escala(voo) -> tuple[list[str], list[str]]:
+    """(países reconhecidos nas escalas, escalas que ficaram sem país)."""
+    paises, desconhecidas = [], []
+    for _minutos, aeroporto, cidade in voo.escalas:
+        p = pais_da_escala(aeroporto, cidade)
+        if p:
+            if p not in paises:
+                paises.append(p)
+        else:
+            desconhecidas.append(cidade or aeroporto)
+    return paises, desconhecidas
 
 
 def expandir(alvo: str | list[str], max_cidades: int) -> list[str]:
@@ -410,6 +476,9 @@ def main() -> int:
     # Abaixo disso a escala não dá para sair do aeroporto, passar imigração e voltar sem
     # correr — então não vale sinalizar como oportunidade.
     escala_min = int(cfg.get("escala_min_horas", 8) * 60)
+    # Países cuja conexão exige visto que eu não tenho. Não filtra a busca (o Google não
+    # tem esse filtro); marca a oferta para a tela poder esconder.
+    evitar_paises = set(cfg.get("evitar_paises", []))
     resultado, disparos = [], []
 
     for setup in cfg["setups"]:
@@ -461,12 +530,22 @@ def main() -> int:
             # A escala longa não custa busca nenhuma: já vem no mesmo rótulo. É o que
             # transforma uma conexão chata numa passada por Seul ou Doha.
             longa = voo.escala_longa(escala_min)
+            paises, escalas_sem_pais = paises_de_escala(voo)
+            # Conexão nos EUA exige visto mesmo sem sair do aeroporto: não existe área de
+            # trânsito internacional lá, todo passageiro passa pela imigração. Para quem
+            # não tem visto, um itinerário desses não é alternativa — é descarte.
+            evitar = [p for p in paises if p in evitar_paises]
             oferta = {
                 "origem": o, "destino": d, "ida": ida, "volta": volta,
                 "preco": voo.preco, "cia": voo.cia, "paradas": voo.paradas,
                 "duracao_min": voo.duracao_min, "url": url,
                 "promo": bateu, "motivo": motivo, "mediana": mediana, "sonda": sonda,
                 "escalas": voo.dict()["escalas"],
+                "paises_escala": paises,
+                "exige_visto": evitar,
+                # Escala que nenhuma tabela reconheceu: a tela precisa dizer "não sei",
+                # em vez de deixar passar como se estivesse liberada.
+                "escalas_sem_pais": escalas_sem_pais,
                 "escala_longa": (
                     {"duracao_min": longa[0], "aeroporto": longa[1], "cidade": longa[2]}
                     if longa else None

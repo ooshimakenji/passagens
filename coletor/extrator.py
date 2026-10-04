@@ -28,6 +28,7 @@ testadas), então vem como None em vez de 0.
 
 from __future__ import annotations
 
+import html as _html
 import re
 from dataclasses import asdict, dataclass
 
@@ -122,6 +123,10 @@ def extrair_voos(html: str) -> list[Voo]:
     diferentes ("melhores voos" e a lista completa)."""
     voos: list[Voo] = []
     vistos: set[Voo] = set()
+    # O atributo vem com entidades HTML: "Chicago O&#39;Hare International Airport".
+    # Sem desescapar, o nome não casa com nenhuma tabela de aeroporto — e aeroporto não
+    # identificado vira escala sem país, que é justamente a que decide se precisa visto.
+    html = _html.unescape(html)
     for rotulo in _ROTULO.findall(html):
         preco = _PRECO.match(rotulo)
         if not preco:  # rótulo com preço em formato inesperado: ignora em vez de mentir

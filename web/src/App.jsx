@@ -35,6 +35,7 @@ const FILTROS_PADRAO = {
   destinos: [],
   paradasMax: 'qualquer',
   soPromo: false,
+  semVisto: false,
 };
 
 function lerLocalStorage(chave, padrao) {
@@ -102,6 +103,9 @@ export default function App() {
       if (oferta.paradas == null || oferta.paradas > filtros.paradasMax) return false;
     }
     if (filtros.soPromo && !oferta.promo) return false;
+    // Esconder quem exige visto não esconde quem ficou sem país identificado: isso
+    // continua visível, com o aviso, para a decisão ser de quem viaja.
+    if (filtros.semVisto && oferta.exige_visto?.length > 0) return false;
     return true;
   };
 

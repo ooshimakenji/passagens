@@ -16,6 +16,7 @@
   "max_cidades": 0,
   "passo_dias": 3,
   "escala_min_horas": 8,
+  "evitar_paises": ["US"],
   "historico_dias": 180,
   "max_buscas_por_execucao": 400,
   "pausa_segundos": 2

@@ -68,12 +68,18 @@ export default function Filtros({ destinosDisponiveis, filtros, setFiltros, onLi
           </Box>
         </Stack>
 
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap">
           <FormControlLabel
             control={
               <Checkbox checked={filtros.soPromo} onChange={(e) => set('soPromo')(e.target.checked)} />
             }
             label="Só promoções (bateram o gatilho)"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox checked={filtros.semVisto} onChange={(e) => set('semVisto')(e.target.checked)} />
+            }
+            label="Esconder quem exige visto na conexão"
           />
           <Button onClick={onLimpar} startIcon={<ClearIcon />} variant="outlined" sx={{ minHeight: 44 }}>
             Limpar filtros

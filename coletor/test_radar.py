@@ -16,6 +16,8 @@ from radar import (
     expandir,
     marcar,
     mediana_rota,
+    pais_da_escala,
+    paises_de_escala,
     minimo_por_rota,
     podar,
 )
@@ -99,6 +101,39 @@ def test_escalas():
     assert direto.escalas == ()
     assert direto.escala_longa(60) is None
     assert d.dict()["escalas"][1]["cidade"] == "New York"
+
+
+def test_pais_da_escala():
+    # Conexão nos EUA exige visto para brasileiro mesmo sem sair do aeroporto, então
+    # errar o país aqui é o erro caro do projeto.
+    assert pais_da_escala("John F. Kennedy International Airport", "New York") == "US"
+    assert pais_da_escala("Tom Jobim International Airport", "Rio de Janeiro") == "BR"
+    # Nome desconhecido ainda resolve pela cidade.
+    assert pais_da_escala("Aeroporto Inventado", "Dallas") == "US"
+    # Cidade ambígua não pode chutar país: "Paris" tem 36 aeroportos nos EUA e Charles de
+    # Gaulle não está registrado sob esse município. Chutar aqui diria que um voo via
+    # Paris exige visto americano.
+    assert pais_da_escala("Aéroport de Paris-Charles de Gaulle", "Paris") != "US"
+
+    # Nada reconhecido é "não sei" — nunca "está liberado".
+    assert pais_da_escala("Aeroporto Inventado", "Cidade Inventada") is None
+    assert pais_da_escala(None, None) is None
+
+    # Entidade HTML no nome ("Chicago O&#39;Hare") é o que quebrava o casamento.
+    chicago = (
+        "From 9000 Brazilian reals round trip total. 1 stop flight with United. Leaves "
+        "São Paulo/Guarulhos–Governor André Franco Montoro International Airport at 10:00 "
+        "PM on Monday, January 18 and arrives at Haneda Airport at 7:00 PM on Wednesday, "
+        "January 20. Total duration 30 hr.  Layover (1 of 1) is a 3 hr layover at Chicago "
+        "O&#39;Hare International Airport in Chicago.  Select flight"
+    )
+    (v,) = extrair_voos(html(chicago))
+    assert v.escalas[0][1] == "Chicago O'Hare International Airport", v.escalas
+    paises, desconhecidas = paises_de_escala(v)
+    assert paises == ["US"] and desconhecidas == [], (paises, desconhecidas)
+
+    (d,) = extrair_voos(html(DUAS_ESCALAS))
+    assert paises_de_escala(d)[0] == ["BR", "US"]
 
 
 def test_gatilho():
