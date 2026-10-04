@@ -179,11 +179,16 @@ companhias que `curr=BRL`. Já o **idioma é armadilha** — com `hl=pt-BR` os r
 traduzidos e a extração devolve zero, indistinguível de "rota sem cotação". O coletor manda
 `hl=''` sempre.
 
-**O parser do `fast-flights` não é usado.** Ele ancora em classe CSS (`kw4HXCc5QE=`), que o
-Google reescreve a cada deploy: em 2026-10-04 a versão 3.1.0 devolveu **0 voos** para
-JFK→LAX com o HTML chegando intacto. `coletor/extrator.py` lê o `aria-label`, que é
-contrato de acessibilidade — mexer nele quebra leitor de tela, então muda raramente. É o
-mesmo defeito de todos os trackers de voo que testei.
+**O parser do `fast-flights` não é usado.** Ele lê o JSON embutido no `<script class="ds:1">`
+da página — script que **continua existindo**, mas de onde o parser não extrai mais nada:
+0 voos em 4 tentativas usando o `main` do upstream (já com o `tfu`), contra 96 voos do nosso
+extrator no **mesmo HTML**. A estrutura do JSON mudou por baixo. O `aria-label`, por ser
+contrato de acessibilidade, muda muito mais devagar.
+
+> **Correção (2026-10-04):** uma versão anterior deste README afirmava que o parser do
+> `fast-flights` ancorava em classe CSS ofuscada. Era dedução minha a partir do sintoma, sem
+> ter lido o código deles. O sintoma (0 voos) é real e reproduzível; a causa que eu dei não
+> era. Fica registrado aqui em vez de apagado.
 
 ### Fontes avaliadas e descartadas
 

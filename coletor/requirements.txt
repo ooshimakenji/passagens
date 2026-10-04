@@ -1,5 +1,5 @@
 # A lib monta a URL protobuf+base64 do Google Flights e faz o fetch — a parte chata.
-# O parser dela não é usado (ancora em classe CSS e devolveu 0 voos em 2026-10-04);
+# O parser dela não é usado (lê um JSON embutido que mudou de formato: 0 voos em 2026-10-04);
 # quem lê o HTML é extrator.py, pelo aria-label.
 fast-flights==3.1.0
 # Dependência que o fast-flights importa mas não declara (ModuleNotFoundError no import).

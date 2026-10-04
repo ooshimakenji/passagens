@@ -1,9 +1,13 @@
 """Extrai voos do HTML do Google Flights.
 
-Por que não usar o parser do `fast-flights` (2090 estrelas, MIT): ele ancora em classes
-CSS (`kw4HXCc5QE=`), que o Google reescreve a cada deploy — em 2026-10-04 a versão 3.1.0
-devolveu 0 voos para JFK->LAX com o HTML chegando intacto. Ancoramos no `aria-label`, que
-é contrato de acessibilidade: mudar quebra leitor de tela, então muda raramente.
+Por que não usar o parser do `fast-flights` (2090 estrelas, MIT): ele lê o JSON embutido no
+`<script class="ds:1">` da página. Esse script **continua existindo** no HTML, mas o parser
+não extrai nada dele — devolveu 0 voos em 4 tentativas (SAO->TYO, 2026-10-04) usando o
+`main` do upstream, já com a correção do `tfu`, contra 96 voos do extrator deste arquivo no
+MESMO HTML. Ou seja: a estrutura do JSON mudou por baixo.
+
+Aqui ancoramos no `aria-label`, que é contrato de acessibilidade: mudar quebra leitor de
+tela, então muda muito mais devagar que um blob JSON interno.
 
 Do `fast-flights` reaproveitamos só o que funciona e é chato de refazer: a codificação
 protobuf+base64 da URL (`create_query`) e o fetch (`fetch_flights_html`).
