@@ -1,0 +1,20 @@
+{
+  "setups": [
+    {
+      "nome": "Japão — qualquer cidade",
+      "origem": "SAO",
+      "destino": "JP",
+      "meses": ["2027-01"],
+      "estadia_dias": [10, 20],
+      "max_paradas": 2,
+      "top_destinos": 5,
+      "gatilho": { "teto_brl": 6000, "pct_abaixo_mediana": 25 }
+    }
+  ],
+  "saida_dir": "web/public/data",
+  "max_cidades": 0,
+  "passo_dias": 3,
+  "historico_dias": 180,
+  "max_buscas_por_execucao": 260,
+  "pausa_segundos": 2
+}

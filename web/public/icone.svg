@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Passagens">
+  <rect width="64" height="64" rx="12" fill="#0B4F6C"/>
+  <!-- avião simplificado: a mesma paleta AAA do resto da tela -->
+  <path d="M32 10 L37 26 L54 34 L54 38 L37 34 L34 48 L40 52 L40 55 L32 52.5 L24 55 L24 52 L30 48 L27 34 L10 38 L10 34 L27 26 Z" fill="#F5F7FA"/>
+</svg>

@@ -1,0 +1,10 @@
+node_modules/
+web/dist/
+__pycache__/
+
+# Tabelas de aeroporto baixadas (15 MB). O workflow as mantém no cache do Actions.
+coletor/cache/
+
+# Os dados vivem no branch órfão `dados`, publicado pelo workflow — não no histórico
+# do código. É o que evita o repo engordar um JSON por dia.
+web/public/data/

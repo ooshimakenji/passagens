@@ -1,0 +1,13 @@
+{
+  "name": "Passagens — radar de preços",
+  "short_name": "Passagens",
+  "description": "Radar de passagens aéreas: alerta quando um voo bate o teto de preço ou a mediana histórica da rota.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F7FA",
+  "theme_color": "#0B4F6C",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icone.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

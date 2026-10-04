@@ -1,0 +1,88 @@
+name: coleta
+
+on:
+  schedule:
+    # 07:00 BRT. Tarifa muda ao longo do dia; uma leitura fixa por dia mantém a série
+    # histórica comparável (o gatilho de mediana depende disso).
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+    inputs:
+      max_buscas:
+        description: "Teto de buscas nesta execução (vazio = o do config.json)"
+        required: false
+
+permissions:
+  contents: write
+  issues: write # o alerta de promo é uma issue neste repo
+
+# Os dados vivem no branch `dados`: duas execuções simultâneas se sobrescreveriam.
+concurrency:
+  group: dados
+  cancel-in-progress: false
+
+jobs:
+  coletar:
+    runs-on: ubuntu-latest
+    # ~260 buscas a 2s de pausa mais o fetch de cada página.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # O histórico vive num branch órfão, fora do histórico do código. Sem trazê-lo, o
+      # radar acharia que nunca viu nada e a mediana nasceria do zero todo dia — o
+      # gatilho de "% abaixo da mediana" deixaria de existir.
+      - name: Recuperar dados da execução anterior
+        run: |
+          mkdir -p web/public/data
+          if git fetch --depth 1 origin dados 2>/dev/null; then
+            git archive FETCH_HEAD | tar -x -C web/public/data
+            echo "dados anteriores: $(ls web/public/data/*.json 2>/dev/null | wc -l) arquivos"
+          else
+            echo "branch dados ainda não existe — primeira execução"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r coletor/requirements.txt
+
+      # Sem rede: se o Google mudou o formato do rótulo, falha aqui e não grava lixo
+      # em cima de uma série histórica boa.
+      - name: Teste do coletor
+        working-directory: coletor
+        run: python test_radar.py
+
+      # As tabelas de aeroporto somam ~15 MB e mudam uma vez por ano.
+      - name: Cache das tabelas de aeroporto
+        uses: actions/cache@v4
+        with:
+          path: coletor/cache
+          key: tabelas-aeroportos-v1
+
+      - name: Coletar
+        working-directory: coletor
+        env:
+          MAX_BUSCAS: ${{ inputs.max_buscas }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # para a issue de alerta
+        run: python radar.py
+
+      - name: Medir a saída
+        run: |
+          {
+            echo '### Coleta'
+            echo '```'
+            ls -la web/public/data
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar no branch dados
+        run: |
+          cd web/public/data
+          git init -q
+          git config user.name "radar-passagens"
+          git config user.email "ooshimakenji@users.noreply.github.com"
+          git add -A
+          git commit -qm "coleta $(date -u +%Y-%m-%d)" || { echo "nada mudou"; exit 0; }
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:dados
