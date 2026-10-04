@@ -8,7 +8,7 @@
 // Sem gzip aqui de propósito: o `licitacoes` comprime porque uma UF passa de
 // 5 MB; `precos.json` tem poucas centenas de ofertas. Se passar de ~1 MB, copiar
 // o `descomprimir` de lá.
-const RAW = 'https://raw.githubusercontent.com/ooshimakenji/passagens/dados';
+const RAW = 'https://raw.githubusercontent.com/ooshimakenji/radar-passagens/dados';
 
 async function buscar(arquivo) {
   // Em dev o arquivo local vem primeiro: dá para rodar o coletor e ver o

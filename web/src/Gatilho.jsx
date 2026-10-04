@@ -15,7 +15,7 @@ import { moeda } from './format.js';
 /// Por isso o botão abaixo não "salva": ele abre o `config.json` no editor do GitHub já
 /// com o valor que você escolheu aqui para colar. Um site estático não tem como escrever
 /// no repositório, e inventar um backend só para isso seria caro demais pelo que entrega.
-const REPO_CONFIG = 'https://github.com/ooshimakenji/passagens/edit/main/config.json';
+const REPO_CONFIG = 'https://github.com/ooshimakenji/radar-passagens/edit/main/config.json';
 
 export default function Gatilho({ gatilho, setGatilho, doColetor, quantosBatem }) {
   const [aberto, setAberto] = useState(false);

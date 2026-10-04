@@ -9,8 +9,8 @@ dias, abaixo de R$ 6.000"*.
 lê esses arquivos pelo raw do GitHub — a coleta diária não redeploya o site. Sem servidor,
 sem banco. Mesmo desenho do [`licitacoes`](../licitacoes).
 
-> O `RAW` em `web/src/dados.js` aponta para `ooshimakenji/passagens`. Se o repo for criado
-> com outro nome, é lá que se ajusta.
+> O `RAW` em `web/src/dados.js` aponta para `ooshimakenji/radar-passagens` — se o repo for
+> renomeado de novo, é lá que se ajusta.
 
 ## Por que existe, se o Google Flights é melhor que isso
 
