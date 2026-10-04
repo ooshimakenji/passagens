@@ -1,19 +1,21 @@
 {
   "setups": [
     {
-      "nome": "Japão — qualquer cidade",
+      "nome": "Ásia — Japão, Coreia ou Taiwan",
       "origem": "SAO",
-      "destino": "JP",
+      "destino": ["JP", "KR", "TW"],
       "meses": ["2027-01"],
       "estadia_dias": [10, 20],
       "max_paradas": 2,
       "top_destinos": 5,
-      "gatilho": { "teto_brl": 6000, "pct_abaixo_mediana": 25 }
+      "gatilho": { "teto_brl": 6000, "pct_abaixo_mediana": 25 },
+      "stopover": { "em": ["ICN", "PEK", "DOH"], "dias": [2, 5], "datas": 2 }
     }
   ],
   "saida_dir": "web/public/data",
   "max_cidades": 0,
   "passo_dias": 3,
+  "escala_min_horas": 8,
   "historico_dias": 180,
   "max_buscas_por_execucao": 260,
   "pausa_segundos": 2

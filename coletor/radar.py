@@ -66,15 +66,21 @@ def _portes() -> dict[str, int]:
 def expandir(alvo: str | list[str], max_cidades: int) -> list[str]:
     """Resolve o guarda-chuva em códigos que o Google Flights aceita.
 
-    - lista -> usada como está;
     - 3 letras (`SAO`, `GRU`, `TYO`) -> usada como está. Código de cidade já é guarda-chuva
       nativo e vale uma busca só;
     - 2 letras (`JP`) -> país: expande para as cidades mais relevantes dele. O Google
       **não** aceita país (`SAO->JP` devolveu zero resultados em 2026-10-04), e é por isso
-      que esta função existe — nenhum alerta pronto cobre "o Japão inteiro".
+      que esta função existe — nenhum alerta pronto cobre "o Japão inteiro";
+    - lista -> cada item resolvido pela mesma regra e concatenado, então
+      `["JP", "KR", "TW"]` compara Japão, Coreia e Taiwan num setup só. Duplicata entre
+      dois itens é descartada (sem repetir busca), mantendo a ordem.
     """
     if isinstance(alvo, list):
-        return alvo
+        vistos = {}
+        for item in alvo:
+            for codigo in expandir(item, max_cidades):
+                vistos[codigo] = None  # dict preserva ordem e deduplica
+        return list(vistos)
     if len(alvo) != 2:
         return [alvo]
 
@@ -95,13 +101,20 @@ def expandir(alvo: str | list[str], max_cidades: int) -> list[str]:
     return ordenadas
 
 
+def amostrar(faixa: list[int]) -> list[int]:
+    """Mínimo, meio e máximo de uma faixa de dias. Varrer todo valor entre 10 e 20 dias
+    multiplicaria as buscas por 11 para diferenças de preço que quase sempre aparecem já
+    nos extremos."""
+    return sorted({min(faixa), (min(faixa) + max(faixa)) // 2, max(faixa)})
+
+
 def datas(meses: list[str], estadias: list[int], passo: int) -> list[tuple[str, str]]:
     """Pares (ida, volta) dentro dos meses pedidos.
 
     Varrer mês inteiro × toda estadia explode (31 × 11 = 341 buscas por rota), então
     amostra: ida a cada `passo` dias e só os extremos e o meio da faixa de estadia.
     """
-    estadias = sorted({min(estadias), (min(estadias) + max(estadias)) // 2, max(estadias)})
+    estadias = amostrar(estadias)
     hoje = date.today()
     pares = []
     for mes in meses:
@@ -192,6 +205,57 @@ def sondar(origens, destinos, par, max_paradas, top, orcamento, pausa, mortas, h
     print(f"  sonda: {len(precos)}/{len(destinos)} cidades com voo, "
           f"aprofundando {[(d, precos[d]) for d in escolhidos]}")
     return escolhidos, ofertas, gastas
+
+
+def cotar_stopover(origem, hub, destino, ida, volta, dias, max_paradas, cache, pausa):
+    """Roteiro com parada de DIAS no meio do caminho, montado com **dois bilhetes**.
+
+    O multi-city do Google não serve: a página de `trip="multi-city"` volta sem resultado
+    no HTML, 5 tentativas de 5 (medido 2026-10-04, tamanho idêntico — não é a
+    intermitência de página vazia, simplesmente não vem). Então o roteiro é cotado como
+    as pessoas de fato compram:
+
+        bilhete 1: origem <-> hub      (ida e volta nas datas do período)
+        bilhete 2: hub    <-> destino  (sai `dias` depois de chegar, volta `dias` antes)
+
+    Você acaba passando pelo hub na ida **e** na volta, o que é o efeito desejado. Em
+    troca são dois contratos separados: atraso no primeiro não obriga ninguém a
+    reacomodar no segundo. Quem usa precisa saber — vai marcado em `dois_bilhetes`.
+
+    O bilhete 1 não depende de `dias`, então entra em `cache` e é cotado uma vez por
+    (hub, par de datas), não uma vez por combinação.
+    """
+    chave = (origem, hub, ida, volta)
+    if chave not in cache:
+        cache[chave] = consultar(origem, hub, ida, volta, max_paradas, pausa=pausa)
+        time.sleep(pausa)
+    perna1 = cache[chave]
+    if perna1 is None:
+        return None
+
+    ida2 = (date.fromisoformat(ida) + timedelta(days=dias)).isoformat()
+    volta2 = (date.fromisoformat(volta) - timedelta(days=dias)).isoformat()
+    if ida2 >= volta2:  # a parada comeu a viagem inteira
+        return None
+
+    perna2 = consultar(hub, destino, ida2, volta2, max_paradas, pausa=pausa)
+    time.sleep(pausa)
+    if perna2 is None:
+        return None
+
+    voo1, url1 = perna1
+    voo2, url2 = perna2
+    return {
+        "preco": voo1.preco + voo2.preco,
+        "hub": hub,
+        "dias_no_hub": dias,
+        "pernas": [
+            {"trecho": f"{origem}-{hub}", "ida": ida, "volta": volta,
+             "preco": voo1.preco, "cia": voo1.cia, "url": url1},
+            {"trecho": f"{hub}-{destino}", "ida": ida2, "volta": volta2,
+             "preco": voo2.preco, "cia": voo2.cia, "url": url2},
+        ],
+    }
 
 
 def disparou(preco: int, mediana: float | None, gatilho: dict) -> tuple[bool, str | None]:
@@ -313,6 +377,9 @@ def main() -> int:
     # com o retry de página vazia, cada uma custa até `tentativas` requisições ao Google.
     restantes = int(os.environ.get("MAX_BUSCAS") or cfg.get("max_buscas_por_execucao", 150))
     pausa = cfg.get("pausa_segundos", 2)
+    # Abaixo disso a escala não dá para sair do aeroporto, passar imigração e voltar sem
+    # correr — então não vale sinalizar como oportunidade.
+    escala_min = int(cfg.get("escala_min_horas", 8) * 60)
     resultado, disparos = [], []
 
     for setup in cfg["setups"]:
@@ -361,15 +428,73 @@ def main() -> int:
         for o, d, ida, volta, voo, url, sonda in achados:
             mediana = mediana_rota(historico, f"{o}-{d}")
             bateu, motivo = disparou(voo.preco, mediana, setup.get("gatilho", {}))
+            # A escala longa não custa busca nenhuma: já vem no mesmo rótulo. É o que
+            # transforma uma conexão chata numa passada por Seul ou Doha.
+            longa = voo.escala_longa(escala_min)
             oferta = {
                 "origem": o, "destino": d, "ida": ida, "volta": volta,
                 "preco": voo.preco, "cia": voo.cia, "paradas": voo.paradas,
                 "duracao_min": voo.duracao_min, "url": url,
                 "promo": bateu, "motivo": motivo, "mediana": mediana, "sonda": sonda,
+                "escalas": voo.dict()["escalas"],
+                "escala_longa": (
+                    {"duracao_min": longa[0], "aeroporto": longa[1], "cidade": longa[2]}
+                    if longa else None
+                ),
             }
             ofertas.append(oferta)
             if bateu:
                 disparos.append({**oferta, "setup": setup["nome"]})
+
+        # Stopover: só em cima do que a varredura JÁ provou bom. Testar todo hub × toda
+        # data × todo nº de dias daria centenas de combinações a 2 buscas cada; partindo
+        # das melhores ofertas, são algumas dezenas e a pergunta é a que interessa —
+        # "esticar uma parada no caminho sai melhor que o voo que achei?".
+        sv = setup.get("stopover")
+        if sv and ofertas:
+            hubs = expandir(sv["em"], cfg.get("max_cidades", 0))
+            cache_perna1: dict = {}
+            bases = sorted(ofertas, key=lambda x: x["preco"])[: sv.get("datas", 2)]
+            print(f"  stopover: hubs {hubs} sobre {len(bases)} melhor(es) data(s)")
+
+            for base in bases:
+                for hub in hubs:
+                    if hub in (base["origem"], base["destino"]):
+                        continue
+                    for n in amostrar(sv["dias"]):
+                        if restantes <= 1:
+                            break
+                        restantes -= 2  # as duas pernas
+                        try:
+                            rota = cotar_stopover(
+                                base["origem"], hub, base["destino"], base["ida"],
+                                base["volta"], n, setup.get("max_paradas"),
+                                cache_perna1, pausa,
+                            )
+                        except Exception as e:
+                            print(f"  stopover {hub} {n}d: falhou ({type(e).__name__})",
+                                  file=sys.stderr)
+                            continue
+                        if rota is None:
+                            continue
+                        bateu, motivo = disparou(
+                            rota["preco"], base.get("mediana"), setup.get("gatilho", {})
+                        )
+                        ofertas.append({
+                            "origem": base["origem"], "destino": base["destino"],
+                            "ida": base["ida"], "volta": base["volta"],
+                            "preco": rota["preco"], "cia": None,
+                            "paradas": None, "duracao_min": None,
+                            "url": rota["pernas"][0]["url"],
+                            "promo": bateu, "motivo": motivo,
+                            "mediana": base.get("mediana"), "sonda": False,
+                            # Comparar com o voo que serviu de base é o que dá sentido ao
+                            # número: "R$ 400 mais caro, e você ganha 4 dias em Seul".
+                            "stopover": {**rota, "base_preco": base["preco"],
+                                         "dois_bilhetes": True},
+                        })
+                        if bateu:
+                            disparos.append({**ofertas[-1], "setup": setup["nome"]})
 
         # Uma observação por rota por dia: a mais barata vista hoje.
         for chave, preco in minimo_por_rota(achados).items():

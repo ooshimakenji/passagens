@@ -48,7 +48,8 @@ cd ../web && npm install && npm run dev
 
 | campo | efeito |
 |---|---|
-| `origem` / `destino` | **3 letras** = aeroporto ou cidade (`SAO` já cobre GRU+CGH+VCP, `TYO` cobre HND+NRT numa busca só); **2 letras** = país, expandido pelo radar; **lista** = exatamente esses |
+| `origem` / `destino` | **3 letras** = aeroporto ou cidade (`SAO` já cobre GRU+CGH+VCP, `TYO` cobre HND+NRT numa busca só); **2 letras** = país, expandido pelo radar; **lista** = cada item pela mesma regra, então `["JP","KR","TW"]` compara Japão, Coreia e Taiwan no mesmo painel |
+| `stopover` | `{"em": ["ICN","DOH"], "dias": [2,5], "datas": 2}` — parada de dias no meio do caminho (ver abaixo) |
 | `meses` | `AAAA-MM`; datas passadas são ignoradas |
 | `estadia_dias` | faixa `[min, max]`; o radar amostra mínimo, meio e máximo |
 | `top_destinos` | quantas cidades do país seguem para a varredura completa (ver sondagem) |
@@ -93,6 +94,36 @@ Então:
 
 Esse par (repetir + esquecer o que está morto) é o que separa um radar que serve de um que
 te diz "não achei voo para Tóquio".
+
+## Parar no meio do caminho
+
+Numa viagem de 24h faz sentido quebrar o trajeto. Duas formas, de custo bem diferente:
+
+**1. Escala longa — sai de graça.** O rótulo do Google já descreve cada escala
+(`Layover (1 of 1) is a 2 hr 45 min layover at John F. Kennedy International Airport in
+New York`). O radar lê isso **sem nenhuma busca extra** e marca a oferta quando alguma
+escala passa de `escala_min_horas` (padrão **8h** — abaixo disso não dá para sair, passar
+imigração e voltar sem correr).
+
+**2. Stopover de dias — dois bilhetes.** O multi-city do Google **não serve**: a página de
+`trip="multi-city"` volta sem resultado no HTML, 5 tentativas de 5, com tamanho idêntico
+(não é a intermitência descrita acima — simplesmente não vem). Então o roteiro é montado
+como as pessoas de fato compram:
+
+```
+bilhete 1: SAO ↔ ICN   (ida e volta nas datas do período)
+bilhete 2: ICN ↔ TYO   (sai N dias depois de chegar, volta N dias antes)
+```
+
+Você passa pelo hub na ida **e** na volta, e o trecho asiático curto costuma ser dominado
+por low-cost — às vezes o conjunto sai perto ou abaixo do voo direto. Em troca são **dois
+contratos separados**: atraso no primeiro não obriga ninguém a reacomodar no segundo. A
+tela avisa isso em cada oferta de stopover, e mostra a diferença contra o voo direto que
+serviu de base — o número só significa algo comparado.
+
+Para não explodir: o stopover é cotado **só sobre as melhores ofertas que a varredura já
+achou** (`datas`, padrão 2), e o bilhete 1 não depende de `dias`, então é cacheado por
+(hub, par de datas).
 
 ## O alerta
 

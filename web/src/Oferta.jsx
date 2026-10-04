@@ -59,6 +59,44 @@ export default function Oferta({ oferta, destaque = false, historico }) {
               .join(' · ') || 'detalhes do voo não informados'}
           </Typography>
 
+          {oferta.escala_longa && (
+            <Typography variant="body2" sx={{ color: 'info.main', fontWeight: 500, mt: 0.5 }}>
+              {duracaoTexto(oferta.escala_longa.duracao_min)} de escala em{' '}
+              {oferta.escala_longa.cidade || oferta.escala_longa.aeroporto} — dá para sair do
+              aeroporto
+            </Typography>
+          )}
+
+          {oferta.stopover && (
+            <Box sx={{ mt: 0.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                {oferta.stopover.dias_no_hub} dias em {oferta.stopover.hub} no caminho
+                {/* O número só diz algo comparado ao voo direto que serviu de base. */}
+                {oferta.stopover.base_preco != null && (
+                  <Typography component="span" variant="body2" color="text.secondary">
+                    {' '}
+                    ({oferta.preco > oferta.stopover.base_preco ? '+' : '−'}
+                    {moeda.format(Math.abs(oferta.preco - oferta.stopover.base_preco))} vs o
+                    voo direto)
+                  </Typography>
+                )}
+              </Typography>
+              {oferta.stopover.pernas?.map((p) => (
+                <Typography key={p.trecho} variant="caption" color="text.secondary" component="div">
+                  {p.trecho} · {dataCurta(p.ida)} → {dataCurta(p.volta)} · {moeda.format(p.preco)}
+                  {p.cia ? ` · ${p.cia}` : ''} ·{' '}
+                  <Link href={p.url} target="_blank" rel="noopener">
+                    ver
+                  </Link>
+                </Typography>
+              ))}
+              <Typography variant="caption" sx={{ color: 'warning.main' }} component="div">
+                São dois bilhetes separados: atraso no primeiro não obriga ninguém a
+                reacomodar você no segundo.
+              </Typography>
+            </Box>
+          )}
+
           {destaque && oferta.motivo && (
             <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 500, mt: 0.5 }}>
               {oferta.motivo}

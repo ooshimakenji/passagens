@@ -48,6 +48,14 @@ _DURACAO = re.compile(r"Total duration (?:(\d+) hr)?\s*(?:(\d+) min)?")
 _BAGAGEM_MAO = re.compile(r"(\d+) carry-on bag")
 _BAGAGEM_DESPACHADA = re.compile(r"(\d+) checked bag")
 
+# "Layover (1 of 2) is a 1 hr 45 min layover at Salvador International Airport in Salvador."
+# Fatiado em blocos primeiro porque o nome do aeroporto contém ponto ("John F. Kennedy
+# International Airport") — regex ancorada em "." recortaria no lugar errado.
+_BLOCO_ESCALA = re.compile(
+    r"Layover \(\d+ of \d+\) is an? (.+?)(?=Layover \(|Select flight|$)", re.S
+)
+_ESCALA = re.compile(r"(?:(\d+) hr\s*)?(?:(\d+) min\s*)?layover at (.+)", re.S)
+
 
 @dataclass(frozen=True)
 class Voo:
@@ -63,9 +71,21 @@ class Voo:
     duracao_min: int | None
     bagagem_mao: int | None
     bagagem_despachada: int | None
+    escalas: tuple[tuple[int, str, str | None], ...] = ()
 
     def dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d["escalas"] = [
+            {"duracao_min": m, "aeroporto": a, "cidade": c} for m, a, c in self.escalas
+        ]
+        return d
+
+    def escala_longa(self, minimo_min: int) -> tuple[int, str, str | None] | None:
+        """A escala mais longa, se der para sair do aeroporto. É isso que transforma uma
+        conexão chata em uma passada por Seul ou Doha."""
+        return max(
+            (e for e in self.escalas if e[0] >= minimo_min), key=lambda e: e[0], default=None
+        )
 
 
 def _int(m: re.Match | None, grupo: int = 1) -> int | None:
@@ -74,6 +94,27 @@ def _int(m: re.Match | None, grupo: int = 1) -> int | None:
 
 def _hora(s: str) -> str:
     return s.replace(" ", " ").strip()
+
+
+def _escalas(rotulo: str) -> tuple[tuple[int, str, str | None], ...]:
+    """As escalas do voo: (minutos, aeroporto, cidade).
+
+    Vem de graça no mesmo rótulo — é o que permite responder "essa escala dá para sair do
+    aeroporto e dar uma volta?" sem nenhuma busca extra. Tupla, não lista, porque `Voo` é
+    congelado e entra num `set` na deduplicação.
+    """
+    escalas = []
+    for bloco in _BLOCO_ESCALA.findall(rotulo):
+        m = _ESCALA.match(bloco.strip())
+        if not m:
+            continue
+        minutos = int(m.group(1) or 0) * 60 + int(m.group(2) or 0)
+        local = m.group(3).strip().rstrip(".").strip()
+        # O texto termina em "<aeroporto> in <cidade>" e o nome do aeroporto tem pontos
+        # ("John F. Kennedy"), então o separador é o ÚLTIMO " in ".
+        aeroporto, _, cidade = local.rpartition(" in ")
+        escalas.append((minutos, (aeroporto or local).strip(), cidade.strip() or None))
+    return tuple(escalas)
 
 
 def extrair_voos(html: str) -> list[Voo]:
@@ -112,6 +153,7 @@ def extrair_voos(html: str) -> list[Voo]:
             duracao_min=duracao,
             bagagem_mao=_int(_BAGAGEM_MAO.search(rotulo)),
             bagagem_despachada=_int(_BAGAGEM_DESPACHADA.search(rotulo)),
+            escalas=_escalas(rotulo),
         )
         if voo not in vistos:
             vistos.add(voo)

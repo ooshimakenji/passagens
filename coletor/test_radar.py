@@ -8,6 +8,8 @@ from datetime import date, timedelta
 
 from extrator import extrair_voos, mais_barato
 from radar import (
+    amostrar,
+    cotar_stopover,
     datas,
     disparou,
     esta_morta,
@@ -31,6 +33,16 @@ IDA_VOLTA = (
     "Haneda Airport at 2:50 PM on Saturday, December 12. Total duration 32 hr 30 min.  "
     "Layover (1 of 1) is a 7 hr 5 min layover at Tom Jobim International Airport in Rio de "
     "Janeiro.  Select flight"
+)
+
+
+DUAS_ESCALAS = (
+    "From 5120 Brazilian reals round trip total. 2 stops flight with LATAM. Leaves São "
+    "Paulo/Guarulhos–Governor André Franco Montoro International Airport at 9:10 AM on "
+    "Monday, January 18 and arrives at Haneda Airport at 7:00 PM on Tuesday, January 19. "
+    "Total duration 21 hr 50 min.  Layover (1 of 2) is a 1 hr 45 min layover at Salvador "
+    "International Airport in Salvador. Layover (2 of 2) is a 9 hr 25 min layover at John "
+    "F. Kennedy International Airport in New York.  Select flight"
 )
 
 
@@ -66,6 +78,29 @@ def test_extrator():
     assert mais_barato([]) is None
 
 
+def test_escalas():
+    (v,) = extrair_voos(html(IDA_VOLTA))
+    assert v.escalas == ((7 * 60 + 5, "Tom Jobim International Airport", "Rio de Janeiro"),)
+
+    (d,) = extrair_voos(html(DUAS_ESCALAS))
+    assert len(d.escalas) == 2, d.escalas
+    assert d.escalas[0] == (105, "Salvador International Airport", "Salvador")
+    # Nome de aeroporto com ponto ("John F. Kennedy") não pode cortar o parse.
+    assert d.escalas[1] == (565, "John F. Kennedy International Airport", "New York")
+
+    # 8h é o critério do dono para dar tempo de sair, comer e voltar sem correr.
+    OITO_HORAS = 8 * 60
+    assert d.escala_longa(OITO_HORAS) == d.escalas[1], "9h25 em Nova York serve"
+    assert v.escala_longa(OITO_HORAS) is None, "7h05 não alcança o critério de 8h"
+    assert d.escala_longa(7 * 60)[2] == "New York"
+
+    # Voo sem escala não inventa escala, e o .dict() vira JSON (lista de dicts).
+    (direto,) = extrair_voos(html(SO_IDA))
+    assert direto.escalas == ()
+    assert direto.escala_longa(60) is None
+    assert d.dict()["escalas"][1]["cidade"] == "New York"
+
+
 def test_gatilho():
     # Teto: dispara no limite, não dispara um real acima.
     assert disparou(4500, None, {"teto_brl": 4500})[0] is True
@@ -95,6 +130,54 @@ def test_mediana_e_poda():
     novo = (date.today() - timedelta(days=10)).isoformat()
     podado = podar({"R": [[velho, 1], [novo, 2]]}, 180)
     assert podado["R"] == [[novo, 2]], podado
+
+
+def test_stopover():
+    import radar
+
+    (voo,) = extrair_voos(html(IDA_VOLTA))  # 7927
+    chamadas = []
+
+    def falso_consultar(o, d, ida, volta, mp, tentativas=2, pausa=0):
+        chamadas.append((o, d, ida, volta))
+        return voo, f"url://{o}-{d}-{ida}"
+
+    original, radar.consultar = radar.consultar, falso_consultar
+    radar.time.sleep = lambda _s: None
+    try:
+        cache = {}
+        r = cotar_stopover("SAO", "ICN", "TYO", "2027-01-05", "2027-01-25", 4,
+                           None, cache, pausa=0)
+        assert r["preco"] == 7927 * 2, r["preco"]
+        assert r["hub"] == "ICN" and r["dias_no_hub"] == 4
+        # 4 dias em Seul na ida e 4 na volta: a perna asiática encurta nas duas pontas.
+        assert r["pernas"][1]["ida"] == "2027-01-09", r["pernas"][1]
+        assert r["pernas"][1]["volta"] == "2027-01-21", r["pernas"][1]
+        assert r["pernas"][0]["trecho"] == "SAO-ICN"
+        assert r["pernas"][1]["trecho"] == "ICN-TYO"
+
+        # Segunda consulta com outro nº de dias reusa o bilhete SAO-ICN do cache.
+        antes = len(chamadas)
+        cotar_stopover("SAO", "ICN", "TYO", "2027-01-05", "2027-01-25", 6,
+                       None, cache, pausa=0)
+        assert len(chamadas) == antes + 1, "a perna 1 não deveria ser cotada de novo"
+
+        # Parada maior que a viagem não vira roteiro impossível.
+        assert cotar_stopover("SAO", "ICN", "TYO", "2027-01-05", "2027-01-12", 9,
+                              None, {}, pausa=0) is None
+
+        # Perna sem preço derruba o roteiro inteiro, em vez de somar meia viagem.
+        radar.consultar = lambda *a, **k: None
+        assert cotar_stopover("SAO", "ICN", "TYO", "2027-01-05", "2027-01-25", 4,
+                              None, {}, pausa=0) is None
+    finally:
+        radar.consultar = original
+
+
+def test_amostrar():
+    assert amostrar([10, 20]) == [10, 15, 20]
+    assert amostrar([3]) == [3]
+    assert amostrar([2, 3]) == [2, 3]  # meio coincide com o mínimo: não duplica
 
 
 def test_minimo_por_rota():
